@@ -1,6 +1,15 @@
 const Imap = require('node-imap');
 const simpleParser = require("mailparser").simpleParser;
 
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 async function get_access_token(refresh_token, client_id) {
     const response = await fetch('https://login.microsoftonline.com/consumers/oauth2/v2.0/token', {
         method: 'POST',
@@ -139,6 +148,12 @@ module.exports = async (req, res) => {
         return res.status(400).json({ error: 'Missing required parameters: refresh_token, client_id, email, or mailbox' });
     }
 
+    // mailbox 白名单校验:防止 attacker 通过任意 IMAP 文件夹名越权访问
+    const ALLOWED_MAILBOXES = ['INBOX', 'Junk'];
+    if (!ALLOWED_MAILBOXES.includes(mailbox)) {
+        return res.status(400).json({ error: 'Invalid mailbox. Allowed: INBOX, Junk' });
+    }
+
     try {
 
         console.log("判断是否graph_api");
@@ -218,18 +233,22 @@ module.exports = async (req, res) => {
                             if (response_type === 'json') {
                                 res.status(200).json(responseData);
                             } else if (response_type === 'html') {
-                                // 格式化 HTML 响应
+                                // 格式化 HTML 响应（所有用户可控字段均经 escapeHtml 转义防 XSS）
+                                const safeSend = escapeHtml(responseData.send);
+                                const safeSubject = escapeHtml(responseData.subject);
+                                const safeDate = escapeHtml(responseData.date);
+                                const safeText = escapeHtml(responseData.text || '').replace(/\n/g, '<br>');
                                 const htmlResponse = `
                                     <html>
                                         <body style="font-family: Arial, sans-serif; line-height: 1.6; margin: 0; padding: 20px; background-color: #f9f9f9;">
                                             <div style="margin: 0 auto; background: #fff; padding: 20px; border: 1px solid #ddd; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
                                                 <h1 style="color: #333;">邮件信息</h1>
-                                                <p><strong>发件人:</strong> ${responseData.send}</p>
-                                                <p><strong>主题:</strong> ${responseData.subject}</p>
-                                                <p><strong>日期:</strong> ${responseData.date}</p>
+                                                <p><strong>发件人:</strong> ${safeSend}</p>
+                                                <p><strong>主题:</strong> ${safeSubject}</p>
+                                                <p><strong>日期:</strong> ${safeDate}</p>
                                                 <div style="background: #f4f4f4; padding: 10px; border: 1px solid #ddd;">
                                                     <p><strong>内容:</strong></p>
-                                                    <p>${responseData.text.replace(/\n/g, '<br>')}</p>
+                                                    <p>${safeText}</p>
                                                 </div>
                                             </div>
                                         </body>

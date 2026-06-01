@@ -406,7 +406,31 @@
     $('#mail-modal-title').textContent = item.subject
     $('#mail-modal-sender').textContent = item.send
     $('#mail-modal-date').textContent = item.date
-    $('#mail-modal-content').innerHTML = item.html || `<pre>${item.text || ''}</pre>`
+
+    const content = $('#mail-modal-content')
+    content.replaceChildren()
+
+    if (item.html) {
+      // 用 sandbox iframe 隔离渲染邮件 HTML，阻止脚本访问 localStorage 等父页面资源
+      const iframe = document.createElement('iframe')
+      iframe.setAttribute('sandbox', '')
+      iframe.setAttribute('referrerpolicy', 'no-referrer')
+      iframe.srcdoc = item.html
+      iframe.style.cssText = 'width:100%;border:0;min-height:400px;'
+      content.appendChild(iframe)
+      iframe.addEventListener('load', () => {
+        try {
+          const h = iframe.contentDocument?.body?.scrollHeight
+          if (h) iframe.style.height = h + 'px'
+        } catch (e) { /* 跨源/无 origin,忽略 */ }
+      })
+    } else {
+      const pre = document.createElement('pre')
+      pre.textContent = item.text || ''
+      pre.style.cssText = 'white-space:pre-wrap;word-wrap:break-word;margin:0;'
+      content.appendChild(pre)
+    }
+
     openModal('mail-modal')
   }
 

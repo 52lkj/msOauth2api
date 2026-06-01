@@ -138,6 +138,12 @@ module.exports = async (req, res) => {
         return res.status(400).json({ error: 'Missing required parameters: refresh_token, client_id, email, or mailbox' });
     }
 
+    // mailbox 白名单校验:防止 attacker 通过任意 IMAP 文件夹名越权访问
+    const ALLOWED_MAILBOXES = ['INBOX', 'Junk'];
+    if (!ALLOWED_MAILBOXES.includes(mailbox)) {
+        return res.status(400).json({ error: 'Invalid mailbox. Allowed: INBOX, Junk' });
+    }
+
     try {
 
         console.log("判断是否graph_api");
